@@ -1,0 +1,82 @@
+version: "3"
+services:
+
+  outline:
+    image: outlinewiki/outline
+    env_file: ./docker.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+      - storage
+
+  redis:
+    image: redis
+    env_file: ./docker.env
+    ports:
+      - "6379:6379"
+    volumes:
+      - /data/redis.conf:/redis.conf
+    command: ["redis-server", "/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  postgres:
+    image: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - /data/database/:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 4273876aa89772fcfb4d14ce18290882cd3351d2c3286d975e8401a97e99083a
+      POSTGRES_DB: outline
+
+  storage:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    entrypoint: sh
+    command: -c 'minio server --console-address ":9090"'
+    deploy:
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - /data/storage/:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: 4273876aa89772fcfb4d14ce18290882cd3351d2c3286d975e8401a97e99083a
+      MINIO_VOLUMES: "/data/"
+
+  https-portal:
+    image: steveltn/https-portal
+    env_file: ./docker.env
+    ports:
+      - '80:80'
+      - '443:443'
+    links:
+      - outline
+      - storage
+    restart: always
+    volumes:
+      - /data/https-portal/:/var/lib/https-portal
+    healthcheck:
+      test: ["CMD", "service", "nginx", "status"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    environment:
+      DOMAINS: 'https://34.79.46.64 -> http://outline:3000'
+      STAGE: 'development'
+      WEBSOCKET: 'true'
+
